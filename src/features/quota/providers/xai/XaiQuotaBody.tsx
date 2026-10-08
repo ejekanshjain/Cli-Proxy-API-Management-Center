@@ -12,6 +12,7 @@ import { QuotaMeter } from '../../components/QuotaMeter';
 import { QuotaResetLabel } from '../../components/QuotaResetLabel';
 import { XAI_WEEKLY_ROW_ID, collectQuotaRowInstants, pickUrgentRowId } from '../../resetSchedule';
 import type { QuotaBodyProps } from '../../types';
+import { resolveXaiPlan } from '../planLabels';
 
 const formatUsdFromCents = (cents: number | null): string => {
   if (cents === null) return '--';
@@ -48,9 +49,6 @@ const formatXaiPercent = (value: number | null): string => {
   return `${Math.round(value)}%`;
 };
 
-const XAI_SUPERGROK_LIMIT_CENTS = 15_000;
-const XAI_SUPERGROK_HEAVY_LIMIT_CENTS = 150_000;
-
 const planValueClass = (
   tier: XaiBillingSummary['planTier'],
   classes: QuotaBodyProps<XaiQuotaState>['classes']
@@ -58,18 +56,6 @@ const planValueClass = (
   if (tier === 'elite') return classes.elitePlanValue;
   if (tier === 'premium') return classes.premiumPlanValue;
   return classes.codexPlanValue;
-};
-
-const resolveXaiPlan = (
-  monthlyLimitCents: number | null
-): { labelKey: string; premium: boolean } | null => {
-  if (monthlyLimitCents === XAI_SUPERGROK_LIMIT_CENTS) {
-    return { labelKey: 'plan_supergrok', premium: false };
-  }
-  if (monthlyLimitCents === XAI_SUPERGROK_HEAVY_LIMIT_CENTS) {
-    return { labelKey: 'plan_supergrok_heavy', premium: true };
-  }
-  return null;
 };
 
 export function XaiQuotaBody({ quota, classes }: QuotaBodyProps<XaiQuotaState>) {
@@ -243,11 +229,7 @@ export function XaiQuotaBody({ quota, classes }: QuotaBodyProps<XaiQuotaState>) 
               <span className={classes.quotaAmount}>{onDemandAmountLabel}</span>
             </div>
           </div>
-          <QuotaMeter
-            percent={onDemandRemaining}
-            classes={classes}
-            index={1}
-          />
+          <QuotaMeter percent={onDemandRemaining} classes={classes} index={1} />
         </div>
       ) : (
         <div className={classes.codexPlan}>
@@ -267,11 +249,7 @@ export function XaiQuotaBody({ quota, classes }: QuotaBodyProps<XaiQuotaState>) 
               )}
             </div>
           </div>
-          <QuotaMeter
-            percent={remaining}
-            classes={classes}
-            index={2}
-          />
+          <QuotaMeter percent={remaining} classes={classes} index={2} />
         </div>
       )}
     </>

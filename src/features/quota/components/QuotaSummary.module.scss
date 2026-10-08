@@ -1,0 +1,230 @@
+@use '../../../styles/mixins' as *;
+
+/* Pooled capacity strip: one bordered panel, tiles split by hairlines.
+ * Tiles keep a fixed minimum width and the strip scrolls sideways rather than
+ * wrapping, so dividers never land at the start of a second row. */
+
+.strip {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(208px, 1fr);
+  overflow-x: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg-primary) 82%, transparent);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-hover) transparent;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 16px 18px 14px;
+
+  & + & {
+    border-left: 1px solid var(--border-color);
+  }
+}
+
+.tileHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin-bottom: 14px;
+}
+
+.iconWrap {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+}
+
+.icon {
+  display: block;
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
+.iconFallback {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.tileTitle {
+  min-width: 0;
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  @include text-ellipsis;
+}
+
+.tileCount {
+  flex-shrink: 0;
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.headlineLabel {
+  font-size: 12px;
+  color: var(--text-secondary);
+  @include text-ellipsis;
+}
+
+.figure {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 2px 0 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.total {
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.capacity {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+/* One mini meter per credential; an unloaded credential stays an empty track. */
+.segments {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.segment {
+  flex: 1 1 0;
+  height: 4px;
+  min-width: 6px;
+  overflow: hidden;
+  border-radius: $radius-full;
+  background: color-mix(in srgb, var(--text-primary) 9%, transparent);
+}
+
+.segmentFill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  transition: width 360ms var(--ease-out-strong, ease);
+}
+
+.high {
+  background: var(--viz-success);
+}
+
+.medium {
+  background: var(--quota-medium-color);
+}
+
+.low {
+  background: var(--viz-failure);
+}
+
+.reset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  margin: 0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+.resetAbsolute {
+  color: var(--text-tertiary);
+}
+
+/* Secondary limits: first one always, the toggle reveals the rest. */
+.extras {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-color);
+}
+
+.extraList {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.extraItem {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.extraLabel {
+  min-width: 0;
+  color: var(--text-tertiary);
+  @include text-ellipsis;
+}
+
+.extraValue {
+  flex-shrink: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+.extraToggle {
+  flex-shrink: 0;
+  padding: 0 2px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .extraToggle:hover {
+    color: var(--text-primary);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .segmentFill {
+    transition: none;
+  }
+}
+
+@include mobile {
+  .strip {
+    grid-auto-columns: minmax(220px, 82%);
+  }
+}

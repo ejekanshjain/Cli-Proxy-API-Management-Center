@@ -112,6 +112,25 @@ export function sortQuotaEntries(
     .map((decorated) => decorated.entry);
 }
 
+export interface QuotaEntryGroup {
+  type: QuotaProviderType;
+  entries: QuotaFileEntry[];
+}
+
+/**
+ * Group entries under provider headings, in order of each provider's first entry.
+ * Order inside a group is kept, so "soonest recovery" still sorts each group.
+ */
+export function groupEntriesByProvider(entries: QuotaFileEntry[]): QuotaEntryGroup[] {
+  const groups = new Map<QuotaProviderType, QuotaFileEntry[]>();
+  for (const entry of entries) {
+    const group = groups.get(entry.type);
+    if (group) group.push(entry);
+    else groups.set(entry.type, [entry]);
+  }
+  return [...groups].map(([type, grouped]) => ({ type, entries: grouped }));
+}
+
 export function buildTabCounts(entries: QuotaFileEntry[]): Record<string, number> {
   const counts: Record<string, number> = { all: entries.length };
   for (const type of QUOTA_TAB_ORDER) {

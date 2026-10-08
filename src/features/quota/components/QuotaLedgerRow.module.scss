@@ -1,0 +1,396 @@
+@use '../../../styles/mixins' as *;
+
+/* Ledger row: identity | three limit columns | actions, split by hairlines.
+ * Fixed limit columns keep every row's meters aligned down the page. */
+
+.row {
+  border-bottom: 1px solid var(--border-color);
+
+  &:last-child {
+    border-bottom: 0;
+  }
+}
+
+/* One-time cascade when the first data arrives; tab switches and paging skip it. */
+.rowEnter {
+  animation: ledger-row-in 0.4s var(--ease-out-strong, ease-out) both;
+  animation-delay: var(--row-delay, 0s);
+}
+
+@keyframes ledger-row-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 8px, 0);
+  }
+}
+
+.main {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.1fr) minmax(0, 3fr) auto;
+  align-items: center;
+  gap: 12px 28px;
+  min-height: 72px;
+  padding: 14px 4px;
+}
+
+.identity {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.name {
+  min-width: 0;
+  font-family: $font-mono;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--text-primary);
+  @include text-ellipsis;
+}
+
+.plan {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  @include text-ellipsis;
+}
+
+/* ---------- limits ---------- */
+
+.limits {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: center;
+  gap: 12px 24px;
+  min-width: 0;
+}
+
+.limit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.limitHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.limitLabel {
+  min-width: 0;
+  color: var(--text-secondary);
+  @include text-ellipsis;
+}
+
+.limitPercent {
+  flex-shrink: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.meter {
+  height: 4px;
+  overflow: hidden;
+  border-radius: $radius-full;
+  background: color-mix(in srgb, var(--text-primary) 9%, transparent);
+}
+
+.meterFill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  transform-origin: left center;
+  transition: width 360ms var(--ease-out-strong, ease);
+  animation: ledger-meter-fill 480ms var(--ease-out-strong, ease-out) both;
+  animation-delay: calc(var(--meter-index, 0) * 40ms);
+}
+
+@keyframes ledger-meter-fill {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+.high {
+  background: var(--viz-success);
+}
+
+.medium {
+  background: var(--quota-medium-color);
+}
+
+.low {
+  background: var(--viz-failure);
+}
+
+.limitReset {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.limitResetAbsolute {
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.limitResetSoon {
+  color: var(--amber-color);
+}
+
+/* idle, loading, error, and empty states span all three columns */
+.loadButton,
+.skeleton,
+.errorStrip,
+.emptyLimits {
+  grid-column: 1 / -1;
+}
+
+.loadButton {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  gap: 7px;
+  height: 32px;
+  padding: 0 14px;
+  border: 1px dashed var(--border-hover);
+  border-radius: $radius-full;
+  background: none;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition:
+    transform var(--dur-press, 160ms) var(--ease-out-strong, ease-out),
+    border-color var(--dur-hover, 200ms) var(--ease-out-strong, ease-out),
+    color var(--dur-hover, 200ms) var(--ease-out-strong, ease-out);
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+
+  &:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+  }
+}
+
+.skeleton {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+}
+
+.skeletonCell {
+  height: 34px;
+  border-radius: 8px;
+  background: linear-gradient(
+    90deg,
+    var(--bg-tertiary) 0%,
+    color-mix(in srgb, var(--bg-tertiary) 40%, transparent) 50%,
+    var(--bg-tertiary) 100%
+  );
+  background-size: 200% 100%;
+  animation: ledger-skeleton-sweep 1.2s ease-in-out infinite;
+}
+
+@keyframes ledger-skeleton-sweep {
+  from {
+    background-position: 100% 0;
+  }
+
+  to {
+    background-position: -100% 0;
+  }
+}
+
+.errorStrip {
+  padding: 8px 12px;
+  border-left: 2px solid var(--viz-failure);
+  border-radius: 6px;
+  background: var(--bg-error-light);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--danger-color);
+  overflow-wrap: anywhere;
+}
+
+.emptyLimits {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ---------- actions ---------- */
+
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ghostAction,
+.expandButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-hover, 200ms) var(--ease-out-strong, ease-out),
+    color var(--dur-hover, 200ms) var(--ease-out-strong, ease-out);
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+  }
+}
+
+.expandButton {
+  padding: 0 8px;
+}
+
+.moreCount {
+  font-size: 11.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.chevron,
+.chevronOpen {
+  transition: transform var(--dur-hover, 200ms) var(--ease-out-strong, ease-out);
+}
+
+.chevronOpen {
+  transform: rotate(180deg);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .ghostAction:hover:not(:disabled),
+  .expandButton:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+  }
+
+  .loadButton:hover:not(:disabled) {
+    border-style: solid;
+    color: var(--text-primary);
+  }
+}
+
+.spinning {
+  animation: ledger-spin 0.8s linear infinite;
+}
+
+@keyframes ledger-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- details panel ---------- */
+
+.details {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 760px;
+  margin: 0 4px 16px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-tertiary) 45%, transparent);
+}
+
+.detailActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.rowMessage {
+  margin: 0 4px 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* ---------- responsive ---------- */
+
+@media (max-width: 1100px) {
+  .main {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .limits {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+
+@include mobile {
+  .limits,
+  .skeleton {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rowEnter,
+  .meterFill,
+  .skeletonCell,
+  .spinning {
+    animation: none;
+  }
+
+  .meterFill,
+  .chevron,
+  .chevronOpen,
+  .loadButton {
+    transition: none;
+  }
+
+  .loadButton:active:not(:disabled) {
+    transform: none;
+  }
+}

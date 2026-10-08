@@ -1,5 +1,5 @@
 /**
- * 额度查询页：提供商 tabs + 统一卡网格。
+ * 额度查询页：提供商 tabs + 汇总条 + 按提供商分组的账本行。
  *
  * 保留的行为契约（重设计不改）：
  * - 现有提供商保持点击加载；Devin 首次可见时主动查询一次，不轮询；
@@ -21,13 +21,15 @@ import { useNow } from '@/hooks/useNow';
 import { useRevealGroup } from '@/hooks/motion';
 import { useAuthStore, useQuotaStore, useThemeStore } from '@/stores';
 import type { AuthFileItem, ResolvedTheme } from '@/types';
-import { getQuotaCacheKey } from '@/utils/quota/identity';
+import { getQuotaCacheKey, getQuotaDisplayName } from '@/utils/quota/identity';
+import { getTypeLabel } from '@/features/authFiles/constants';
 import { ProviderTabs } from '@/features/authFiles/components/ProviderTabs';
 import { QuotaHeader } from './components/QuotaHeader';
-import { QuotaCard } from './components/QuotaCard';
+import { QuotaLedgerRow } from './components/QuotaLedgerRow';
+import { QuotaSummary, type QuotaSummaryGroup } from './components/QuotaSummary';
 import { QuotaTimeline } from './components/QuotaTimeline';
 import {
-  CARD_ENTRANCE_BUDGET_MS,
+  ROW_ENTRANCE_BUDGET_MS,
   QUOTA_PAGE_SIZE,
   QUOTA_SORT_MODES,
   QUOTA_TAB_ORDER,
@@ -40,10 +42,12 @@ import {
   classifyQuotaFiles,
   filterEntriesByTab,
   filterEntriesBySearch,
+  groupEntriesByProvider,
   paginate,
   sortQuotaEntries,
   type QuotaFileEntry,
 } from './logic';
+import { buildLedgerWindows, ledgerPlanLabel, maskEmails, type LedgerWindow } from './ledgerModel';
 import { nextRecoveryMs } from './resetSchedule';
 import { QUOTA_ADAPTERS, getQuotaSetter, type QuotaCardState } from './providers';
 import type { QuotaProviderType } from './providers/types';
@@ -54,13 +58,9 @@ import { readQuotaUiState, writeQuotaUiState } from './uiState';
 import styles from './QuotaPage.module.scss';
 
 const TAB_IDS: string[] = ['all', ...QUOTA_TAB_ORDER];
-const SKELETON_CARD_COUNT = 6;
+const SKELETON_ROW_COUNT = 6;
 
-/**
- * Existing providers display filenames; Devin's card and timeline share an
- * identity-aware display label. Keep the filename fallback stable for memoization.
- */
-const displayNameFor = (name: string) => name;
+const entryKey = (entry: QuotaFileEntry) => `${entry.type}:${getQuotaCacheKey(entry.file)}`;
 
 export function QuotaPage() {
   const { t } = useTranslation();
@@ -76,6 +76,7 @@ export function QuotaPage() {
   );
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [showEmails, setShowEmails] = useState(() => readQuotaUiState()?.showEmails === true);
   const searchInputRef = useRef<HTMLInputElement>(null);
   // 页头 + tabs 的入场级联（标题 → meta → 动作 → tabs，级差 70ms）
   const revealRef = useRevealGroup<HTMLDivElement>();
@@ -199,6 +200,49 @@ export function QuotaPage() {
     writeQuotaUiState({ sortMode: next as QuotaSortMode });
   }, []);
 
+  const handleToggleEmails = useCallback(() => {
+    setShowEmails((value) => {
+      writeQuotaUiState({ showEmails: !value });
+      return !value;
+    });
+  }, []);
+
+  // Masking is display only: search and cache keys keep the real filename.
+  const displayNameFor = useCallback(
+    (name: string) => (showEmails ? name : maskEmails(name)),
+    [showEmails]
+  );
+
+  /* ---------- 账本视图模型 ----------
+   * 每个凭证读一次 provider 形状：行与汇总条共用同一份归一化结果。 */
+
+  const ledgerByEntry = useMemo(() => {
+    const ledger = new Map<string, { windows: LedgerWindow[]; planLabel: string | null }>();
+    entries.forEach((entry) => {
+      const quota = getQuota(entry);
+      ledger.set(entryKey(entry), {
+        windows: buildLedgerWindows(entry.type, quota, t),
+        planLabel: ledgerPlanLabel(entry.type, quota, t),
+      });
+    });
+    return ledger;
+  }, [entries, getQuota, t]);
+
+  // 汇总条覆盖整个过滤结果（不止当前页），与 tab/搜索保持一致。
+  const summaryGroups = useMemo<QuotaSummaryGroup[]>(
+    () =>
+      groupEntriesByProvider(filteredEntries).map((group) => ({
+        key: group.type,
+        provider: group.type,
+        credentials: group.entries.map(
+          (entry) => ledgerByEntry.get(entryKey(entry))?.windows ?? []
+        ),
+      })),
+    [filteredEntries, ledgerByEntry]
+  );
+  const groupCounts = useMemo(() => buildTabCounts(filteredEntries), [filteredEntries]);
+  const pageGroups = useMemo(() => groupEntriesByProvider(pageItems), [pageItems]);
+
   const sortOptions = useMemo(
     () =>
       QUOTA_SORT_MODES.map((mode) => ({ value: mode, label: t(`quota_management.sort_${mode}`) })),
@@ -290,27 +334,30 @@ export function QuotaPage() {
 
   const canUseActions = !disableControls && !loading && filesGeneration === sessionGeneration;
 
-  /* ---------- 首屏卡片一次性级联入场 ----------
-   * 首批数据渲染后立即翻转 cardsAnimated；已挂载的卡片在挂载时捕获过自己的
-   * 延迟（QuotaCard 内 useState 初始化），后续切 tab/翻页/刷新新挂载的卡片
+  /* ---------- 首屏账本行一次性级联入场 ----------
+   * 首批数据渲染后立即翻转 rowsAnimated；已挂载的行在挂载时捕获过自己的
+   * 延迟（QuotaLedgerRow 内 useState 初始化），后续切 tab/翻页/刷新新挂载的行
    * 拿到 null —— 不重播。 */
 
-  const [cardsAnimated, setCardsAnimated] = useState(false);
-  const enableCardEntrance = !cardsAnimated && !loading && pageItems.length > 0;
+  const [rowsAnimated, setRowsAnimated] = useState(false);
+  const enableRowEntrance = !rowsAnimated && !loading && pageItems.length > 0;
   useEffect(() => {
-    if (enableCardEntrance) {
-      setCardsAnimated(true);
+    if (enableRowEntrance) {
+      setRowsAnimated(true);
     }
-  }, [enableCardEntrance]);
-  const cardEntranceDelay = (index: number): number | null => {
-    if (!enableCardEntrance) return null;
+  }, [enableRowEntrance]);
+  const rowEntranceDelay = (index: number): number | null => {
+    if (!enableRowEntrance) return null;
     if (pageItems.length <= 1) return 0;
-    return Math.round((index / (pageItems.length - 1)) * CARD_ENTRANCE_BUDGET_MS);
+    return Math.round((index / (pageItems.length - 1)) * ROW_ENTRANCE_BUDGET_MS);
   };
 
   /* ---------- 渲染 ---------- */
 
   const isEmpty = !loading && filteredEntries.length === 0;
+
+  // 行入场级差按整页序号计算，跨分组连续。
+  const pageIndexByKey = new Map(pageItems.map((entry, index) => [entryKey(entry), index]));
 
   return (
     <div className={styles.page} ref={revealRef}>
@@ -320,11 +367,13 @@ export function QuotaPage() {
         attentionCount={attentionCount}
         refreshing={loading || batchLoading}
         disableControls={disableControls}
+        showEmails={showEmails}
+        onToggleEmails={handleToggleEmails}
         onRefreshAll={handleRefreshAll}
       />
 
       <section className={styles.workbench}>
-        {/* 提供商导航与搜索工具栏分层，避免不同控件争夺视觉焦点。 */}
+        {/* 提供商导航在左，搜索与排序在右；窄屏时换行。 */}
         <div className={styles.tabsRow} data-reveal>
           <ProviderTabs
             types={TAB_IDS}
@@ -333,45 +382,53 @@ export function QuotaPage() {
             resolvedTheme={resolvedTheme}
             onChange={handleTabChange}
           />
+
+          <div className={styles.toolbar}>
+            <div className={styles.search}>
+              <IconSearch size={16} className={styles.searchIcon} aria-hidden="true" />
+              <input
+                ref={searchInputRef}
+                className={styles.searchInput}
+                type="search"
+                value={search}
+                onChange={(event) => handleSearchChange(event.target.value)}
+                placeholder={t('quota_management.search_placeholder')}
+                aria-label={t('quota_management.search_label')}
+              />
+              {search && (
+                <button
+                  type="button"
+                  className={styles.clearSearch}
+                  aria-label={t('quota_management.search_clear')}
+                  title={t('quota_management.search_clear')}
+                  onClick={() => {
+                    handleSearchChange('');
+                    searchInputRef.current?.focus();
+                  }}
+                >
+                  <IconX size={14} aria-hidden="true" />
+                </button>
+              )}
+            </div>
+            <div className={styles.sort}>
+              <Select
+                value={sortMode}
+                options={sortOptions}
+                onChange={handleSortModeChange}
+                ariaLabel={t('quota_management.sort_label')}
+                size="sm"
+              />
+            </div>
+          </div>
         </div>
 
-        <div className={styles.toolbar}>
-          <div className={styles.search}>
-            <IconSearch size={16} className={styles.searchIcon} aria-hidden="true" />
-            <input
-              ref={searchInputRef}
-              className={styles.searchInput}
-              type="search"
-              value={search}
-              onChange={(event) => handleSearchChange(event.target.value)}
-              placeholder={t('quota_management.search_placeholder')}
-              aria-label={t('quota_management.search_label')}
-            />
-            {search && (
-              <button
-                type="button"
-                className={styles.clearSearch}
-                aria-label={t('quota_management.search_clear')}
-                title={t('quota_management.search_clear')}
-                onClick={() => {
-                  handleSearchChange('');
-                  searchInputRef.current?.focus();
-                }}
-              >
-                <IconX size={14} aria-hidden="true" />
-              </button>
-            )}
-          </div>
-          <div className={styles.sort}>
-            <Select
-              value={sortMode}
-              options={sortOptions}
-              onChange={handleSortModeChange}
-              ariaLabel={t('quota_management.sort_label')}
-              size="sm"
-            />
-          </div>
-        </div>
+        {!loading && (
+          <QuotaSummary
+            groups={summaryGroups}
+            mode={tab === 'all' ? 'provider' : 'window'}
+            resolvedTheme={resolvedTheme}
+          />
+        )}
 
         {error && (
           <div className={styles.errorBanner} role="alert">
@@ -380,9 +437,9 @@ export function QuotaPage() {
         )}
 
         {loading ? (
-          <div className={styles.grid} aria-hidden="true">
-            {Array.from({ length: SKELETON_CARD_COUNT }, (_, index) => (
-              <Skeleton key={index} height={168} rounded={14} />
+          <div className={styles.skeletonList} aria-hidden="true">
+            {Array.from({ length: SKELETON_ROW_COUNT }, (_, index) => (
+              <Skeleton key={index} height={64} rounded={10} />
             ))}
           </div>
         ) : isEmpty ? (
@@ -414,19 +471,35 @@ export function QuotaPage() {
             }
           />
         ) : (
-          <div className={styles.grid}>
-            {pageItems.map((entry, index) => (
-              <QuotaCard
-                key={`${entry.type}:${getQuotaCacheKey(entry.file)}`}
-                entry={entry}
-                quota={getQuota(entry)}
-                resolvedTheme={resolvedTheme}
-                canRefresh={canUseActions && !entry.file.disabled}
-                resetting={resettingQuotaName === getQuotaCacheKey(entry.file)}
-                entranceDelayMs={cardEntranceDelay(index)}
-                onRefresh={() => void refreshQuota(entry.file, QUOTA_ADAPTERS[entry.type])}
-                onReset={() => resetQuota(entry.file, QUOTA_ADAPTERS[entry.type])}
-              />
+          <div className={styles.ledger}>
+            {pageGroups.map((group) => (
+              <section key={group.type} className={styles.group}>
+                <h2 className={styles.groupTitle}>
+                  {getTypeLabel(t, group.type)}
+                  <span className={styles.groupCount}>{groupCounts[group.type] ?? 0}</span>
+                </h2>
+                <ul className={styles.rows}>
+                  {group.entries.map((entry) => {
+                    const key = entryKey(entry);
+                    const ledger = ledgerByEntry.get(key);
+                    return (
+                      <QuotaLedgerRow
+                        key={key}
+                        entry={entry}
+                        quota={getQuota(entry)}
+                        displayName={displayNameFor(getQuotaDisplayName(entry.file))}
+                        planLabel={ledger?.planLabel ?? null}
+                        windows={ledger?.windows ?? []}
+                        canRefresh={canUseActions && !entry.file.disabled}
+                        resetting={resettingQuotaName === getQuotaCacheKey(entry.file)}
+                        entranceDelayMs={rowEntranceDelay(pageIndexByKey.get(key) ?? 0)}
+                        onRefresh={() => void refreshQuota(entry.file, QUOTA_ADAPTERS[entry.type])}
+                        onReset={() => resetQuota(entry.file, QUOTA_ADAPTERS[entry.type])}
+                      />
+                    );
+                  })}
+                </ul>
+              </section>
             ))}
           </div>
         )}

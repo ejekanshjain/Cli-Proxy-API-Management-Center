@@ -23,8 +23,9 @@ describe('provider filter overflow', () => {
     expect(source).toContain("strip.removeEventListener('wheel', onWheel)");
   });
 
-  test('allocates remaining quota toolbar width without shrinking the sort control', () => {
-    expect(quotaStyles).toMatch(/> :first-child\s*\{\s*flex: 1 1 auto;\s*min-width: 0;/);
+  test('lets the tab strip shrink and scroll beside the toolbar without shrinking the sort control', () => {
+    expect(quotaStyles).toMatch(/> :first-child\s*\{\s*flex: 1 1 \d+px;\s*min-width: 0;/);
+    expect(quotaStyles).toMatch(/\.toolbar\s*\{[^}]*flex: 0 0 auto;/);
     expect(quotaStyles).toMatch(/\.sort\s*\{\s*flex: 0 0 auto;/);
   });
 });
